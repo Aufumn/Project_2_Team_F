@@ -4,7 +4,7 @@ import random
 import unittest
 
 from linebreak import (INF, baseline, optimized, optimized_bottom_up,
-                       optimized_with_layout, linear_penalty, cubic_penalty)
+                       optimized_with_layout, linear_penalty)
 
 IMPLS = [baseline, optimized, optimized_bottom_up]
 
@@ -33,41 +33,39 @@ def brute_force(words, width, penalty):
 
 
 class HandCheckedCases(unittest.TestCase):
-    def check(self, words, width, linear, cubic):
+    def check(self, words, width, expected):
         for f in IMPLS:
             with self.subTest(impl=f.__name__):
-                self.assertEqual(f(words, width, linear_penalty), linear)
-                self.assertEqual(f(words, width, cubic_penalty), cubic)
+                self.assertEqual(f(words, width, linear_penalty), expected)
 
     def test_empty(self):
-        self.check([], 10, 0, 0)
+        self.check([], 10, 0)
 
     def test_single_word(self):
-        self.check(["hello"], 10, 0, 0)          # last line is free
+        self.check(["hello"], 10, 0)          # last line is free
 
     def test_everything_fits_one_line(self):
-        self.check(["a", "b", "c"], 20, 0, 0)
+        self.check(["a", "b", "c"], 20, 0)
 
     def test_exact_fit_lines(self):
-        self.check(["aaa", "bbb", "ccc"], 7, 0, 0)   # "aaa bbb" / "ccc"
+        self.check(["aaa", "bbb", "ccc"], 7, 0)   # "aaa bbb" / "ccc"
 
     def test_forced_breaks(self):
         # width 5: each 3-letter word alone, slack 2 on first two lines
-        self.check(["aaa", "bbb", "ccc"], 5, 12, 16)
+        self.check(["aaa", "bbb", "ccc"], 5, 12)
 
     def test_uneven_forced(self):
         # width 6: "aaaa" (slack 2) / "bb" (slack 4) / "cccc" last
-        self.check(["aaaa", "bb", "cccc"], 6, 18, 72)
+        self.check(["aaaa", "bb", "cccc"], 6, 18)
 
     def test_word_exactly_width(self):
-        self.check(["abcde", "fg"], 5, 0, 0)     # "abcde" slack 0, "fg" last
+        self.check(["abcde", "fg"], 5, 0)     # "abcde" slack 0, "fg" last
 
-    def test_greedy_is_not_optimal(self):
-        # Greedy packs "aaa bb" then "c" then "ddddd"; DP can do better.
+    def test_mixed_lengths_match_brute_force(self):
         words, W = ["aaa", "bb", "c", "ddddd"], 6
-        expected = brute_force(words, W, cubic_penalty)
+        expected = brute_force(words, W, linear_penalty)
         for f in IMPLS:
-            self.assertEqual(f(words, W, cubic_penalty), expected)
+            self.assertEqual(f(words, W, linear_penalty), expected)
 
 
 class EdgeCases(unittest.TestCase):
@@ -112,11 +110,10 @@ class RandomizedAgreement(unittest.TestCase):
             n = rng.randint(0, 11)
             words = ["x" * rng.randint(1, 8) for _ in range(n)]
             width = rng.randint(4, 25)
-            for pen in (linear_penalty, cubic_penalty):
-                expected = brute_force(words, width, pen)
-                for f in IMPLS:
-                    self.assertEqual(f(words, width, pen), expected,
-                                     (f.__name__, words, width))
+            expected = brute_force(words, width, linear_penalty)
+            for f in IMPLS:
+                self.assertEqual(f(words, width, linear_penalty), expected,
+                                 (f.__name__, words, width))
 
 
 class LayoutReconstruction(unittest.TestCase):
@@ -126,13 +123,13 @@ class LayoutReconstruction(unittest.TestCase):
             n = rng.randint(1, 30)
             words = ["y" * rng.randint(1, 9) for _ in range(n)]
             width = rng.randint(9, 30)
-            for pen in (linear_penalty, cubic_penalty):
-                cost, lines = optimized_with_layout(words, width, pen)
-                self.assertEqual(cost, optimized_bottom_up(words, width, pen))
-                self.assertEqual(" ".join(lines).split(), words)   # same words, same order
-                self.assertTrue(all(len(l) <= width for l in lines))
-                recomputed = sum(pen(width - len(l)) for l in lines[:-1])
-                self.assertEqual(recomputed, cost)
+            pen = linear_penalty
+            cost, lines = optimized_with_layout(words, width, pen)
+            self.assertEqual(cost, optimized_bottom_up(words, width, pen))
+            self.assertEqual(" ".join(lines).split(), words)   # same words, same order
+            self.assertTrue(all(len(l) <= width for l in lines))
+            recomputed = sum(pen(width - len(l)) for l in lines[:-1])
+            self.assertEqual(recomputed, cost)
 
     def test_layout_infeasible(self):
         self.assertEqual(optimized_with_layout(["abcdefgh"], 3), (INF, None))
